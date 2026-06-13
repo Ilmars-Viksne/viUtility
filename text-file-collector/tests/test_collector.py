@@ -69,9 +69,38 @@ def test_adds_newline_for_file_without_final_newline(tmp_path) -> None:
     (input_dir / "a.txt").write_text("hello", encoding="utf-8")
 
     result = collect_text_files(CollectionOptions(input_dir, tmp_path / "combined.txt"))
+    output = result.output_file.read_text(encoding="utf-8")
 
-    assert result.output_file.read_text(encoding="utf-8").endswith("hello\n")
-    assert not result.output_file.read_text(encoding="utf-8").endswith("hello\n\n")
+    assert output.endswith("hello\n")
+    assert not output.endswith("hello\n\n")
+
+
+def test_collect_rejects_invalid_encoding_for_direct_api_use(tmp_path) -> None:
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+
+    with pytest.raises(TextFileCollectorError, match="Unsupported encoding"):
+        collect_text_files(
+            CollectionOptions(
+                input_dir,
+                tmp_path / "combined.txt",
+                encoding="not-a-real-encoding",
+            ),
+        )
+
+
+def test_collect_rejects_invalid_separator_length(tmp_path) -> None:
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+
+    with pytest.raises(TextFileCollectorError, match="Separator length"):
+        collect_text_files(
+            CollectionOptions(
+                input_dir,
+                tmp_path / "combined.txt",
+                separator_length=0,
+            ),
+        )
 
 
 def test_deterministic_output_order(tmp_path) -> None:

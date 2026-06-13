@@ -4,6 +4,8 @@ A small Python CLI utility that recursively scans a directory and writes readabl
 
 Binary files are skipped. Files that cannot be decoded with the selected encoding are skipped with warnings. Unreadable files are skipped with warnings. If the output file is inside the input directory, it is skipped during collection.
 
+The output file is written via a temporary file and replaced only after collection succeeds, reducing the chance of leaving a partially written output file.
+
 ## Installation
 
 ```bash

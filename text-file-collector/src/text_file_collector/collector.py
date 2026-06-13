@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 import fnmatch
 import logging
 import os
@@ -70,6 +71,14 @@ def collect_text_files(options: CollectionOptions) -> CollectionResult:
     """Collect readable text files into one output file."""
     input_dir = options.input_dir.expanduser().resolve()
     output_file = options.output_file.expanduser().resolve()
+
+    try:
+        codecs.lookup(options.encoding)
+    except LookupError as exc:
+        raise TextFileCollectorError(f"Unsupported encoding: {options.encoding}") from exc
+
+    if options.separator_length < 1:
+        raise TextFileCollectorError("Separator length must be greater than zero.")
 
     if not input_dir.exists():
         raise TextFileCollectorError(f"Input directory does not exist: {options.input_dir}")
