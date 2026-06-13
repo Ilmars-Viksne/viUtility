@@ -3,71 +3,31 @@
 from __future__ import annotations
 
 import argparse
+import codecs
 import logging
 import sys
 from pathlib import Path
 from typing import Sequence
 
-from pydantic import BaseModel, Field, ValidationError, field_validator
-
 from text_file_collector import __version__
-from text_file_collector.composition import (
-    build_collection_service,
-    normalize_input_path,
-    normalize_output_path,
+from text_file_collector.collector import (
+    DEFAULT_EXCLUDES,
+    CollectionOptions,
+    collect_text_files,
 )
-from text_file_collector.config import load_settings
-from text_file_collector.core.entities import CollectionRequest
-from text_file_collector.core.exceptions import TextFileCollectorError
+from text_file_collector.exceptions import TextFileCollectorError
 from text_file_collector.logging_config import configure_logging
 
 logger = logging.getLogger(__name__)
 
-
-class RunCommandInput(BaseModel):
-    """Validated CLI input for the run command."""
-
-    input_dir: Path = Field(description="Directory to scan recursively.")
-    output_file: Path = Field(description="Output text file.")
-    log_level: str = Field(default="INFO", description="Logging level.")
-
-    @field_validator("input_dir")
-    @classmethod
-    def input_dir_must_exist(cls, value: Path) -> Path:
-        expanded = value.expanduser()
-
-        if not expanded.is_dir():
-            raise ValueError(f"Input directory does not exist: {value}")
-
-        return value
-
-    @field_validator("output_file")
-    @classmethod
-    def output_file_parent_must_be_valid(cls, value: Path) -> Path:
-        parent = value.expanduser().parent
-
-        if parent.exists() and not parent.is_dir():
-            raise ValueError(f"Output parent is not a directory: {parent}")
-
-        return value
-
-    @field_validator("log_level")
-    @classmethod
-    def log_level_must_be_supported(cls, value: str) -> str:
-        normalized = value.upper()
-        allowed = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}
-
-        if normalized not in allowed:
-            raise ValueError(f"Unsupported log level: {value}")
-
-        return normalized
+ALLOWED_LOG_LEVELS = {"CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"}
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build CLI argument parser."""
+    """Build the CLI argument parser."""
     parser = argparse.ArgumentParser(
         prog="text-file-collector",
-        description="Recursively collect non-binary text files into one combined output file.",
+        description="Recursively collect readable text files into one combined output file.",
     )
     parser.add_argument(
         "--version",
@@ -75,68 +35,54 @@ def build_parser() -> argparse.ArgumentParser:
         version=f"%(prog)s {__version__}",
     )
 
-    subparsers = parser.add_subparsers(dest="command")
-
-    run_parser = subparsers.add_parser(
-        "run",
-        help="Collect non-binary files from a directory.",
-    )
-    run_parser.add_argument(
-        "--input-dir",
-        required=True,
-        type=Path,
-        help="Directory to scan recursively.",
-    )
-    run_parser.add_argument(
-        "--output-file",
-        required=True,
-        type=Path,
-        help="Output text file to create.",
-    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    run_parser = subparsers.add_parser("run", help="Collect text files from a directory.")
+    run_parser.add_argument("--input-dir", required=True, type=Path, help="Directory to scan recursively.")
+    run_parser.add_argument("--output-file", required=True, type=Path, help="Output text file.")
+    run_parser.add_argument("--encoding", default="utf-8", help="Text encoding to read and write.")
     run_parser.add_argument(
         "--log-level",
-        default=None,
+        default="INFO",
         help="Logging level: CRITICAL, ERROR, WARNING, INFO, or DEBUG.",
+    )
+    run_parser.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        help="Exclude a file or directory name, relative path, or glob pattern. May be repeated.",
+    )
+    run_parser.add_argument(
+        "--no-default-excludes",
+        action="store_true",
+        help="Disable built-in excludes for common project noise.",
     )
 
     return parser
 
 
 def run_command(args: argparse.Namespace) -> int:
-    """Execute the run command."""
-    settings = load_settings()
-    requested_log_level = args.log_level or settings.log_level
+    """Execute the run subcommand."""
+    log_level = str(args.log_level).upper()
+    configure_logging(log_level if log_level in ALLOWED_LOG_LEVELS else "INFO")
 
-    try:
-        cli_input = RunCommandInput(
-            input_dir=args.input_dir,
-            output_file=args.output_file,
-            log_level=requested_log_level,
-        )
-    except ValidationError as exc:
-        configure_logging(requested_log_level)
-        logger.error("CLI validation failed.")
-        print("Invalid command input:", file=sys.stderr)
-        print(str(exc), file=sys.stderr)
+    validation_error = validate_run_args(args, log_level)
+    if validation_error is not None:
+        print(f"Invalid command input: {validation_error}", file=sys.stderr)
         return 2
 
-    configure_logging(cli_input.log_level)
+    excludes = tuple(args.exclude)
+    if not args.no_default_excludes:
+        excludes = DEFAULT_EXCLUDES + excludes
+
+    options = CollectionOptions(
+        input_dir=args.input_dir,
+        output_file=args.output_file,
+        encoding=args.encoding,
+        excludes=excludes,
+    )
 
     try:
-        service = build_collection_service(settings)
-        request = CollectionRequest(
-            input_directory=normalize_input_path(cli_input.input_dir),
-            output_file=normalize_output_path(cli_input.output_file),
-        )
-
-        result = service.collect(request)
-
-        print(
-            "Done. "
-            f"Wrote {result.text_files_written} text file(s) to: {result.output_file}. "
-            f"Skipped {result.binary_files_skipped} binary file(s)."
-        )
-        return 0
+        result = collect_text_files(options)
     except TextFileCollectorError as exc:
         logger.error("Collection failed: %s", exc)
         print(f"Error: {exc}", file=sys.stderr)
@@ -146,16 +92,47 @@ def run_command(args: argparse.Namespace) -> int:
         print("Unexpected error. Run with --log-level DEBUG for details.", file=sys.stderr)
         return 99
 
+    print(
+        "Done. "
+        f"Wrote {result.files_written} text file(s) to: {result.output_file}. "
+        f"Skipped {result.files_skipped} file(s)."
+    )
+    return 0
+
+
+def validate_run_args(args: argparse.Namespace, log_level: str) -> str | None:
+    """Validate run arguments and return an error message when invalid."""
+    input_dir = args.input_dir.expanduser()
+    output_file = args.output_file.expanduser()
+
+    if not input_dir.exists():
+        return f"Input directory does not exist: {args.input_dir}"
+    if not input_dir.is_dir():
+        return f"Input path is not a directory: {args.input_dir}"
+    if output_file.exists() and output_file.is_dir():
+        return f"Output file is an existing directory: {args.output_file}"
+    if log_level not in ALLOWED_LOG_LEVELS:
+        return f"Unsupported log level: {args.log_level}"
+
+    try:
+        codecs.lookup(args.encoding)
+    except LookupError:
+        return f"Unsupported encoding: {args.encoding}"
+
+    return None
+
 
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entry point."""
     parser = build_parser()
-    args = parser.parse_args(argv)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code)
 
     if args.command == "run":
         return run_command(args)
 
-    parser.print_help()
     return 2
 
 
