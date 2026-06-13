@@ -51,7 +51,11 @@ class CollectionOptions:
 
 @dataclass(frozen=True)
 class CollectionResult:
-    """Summary of a collection run."""
+    """Summary of a collection run.
+
+    files_seen counts candidate files considered after excludes and after
+    skipping the final output file and temporary output file.
+    """
 
     files_seen: int
     files_written: int
@@ -74,7 +78,12 @@ def collect_text_files(options: CollectionOptions) -> CollectionResult:
     if output_file.exists() and output_file.is_dir():
         raise TextFileCollectorError(f"Output file is an existing directory: {options.output_file}")
 
-    output_file.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise TextFileCollectorError(
+            f"Could not create output directory: {output_file.parent}",
+        ) from exc
 
     counts = {
         "files_seen": 0,
@@ -92,6 +101,8 @@ def collect_text_files(options: CollectionOptions) -> CollectionResult:
             encoding=options.encoding,
             newline="",
             dir=output_file.parent,
+            prefix=".text-file-collector-",
+            suffix=".tmp",
             delete=False,
         ) as temp_file:
             temp_path = Path(temp_file.name).resolve()
@@ -128,7 +139,7 @@ def collect_text_files(options: CollectionOptions) -> CollectionResult:
                 temp_file.write(format_section(relative_path, content, separator))
                 counts["files_written"] += 1
 
-        temp_path.replace(output_file)
+        _replace_file(temp_path, output_file)
     except TextFileCollectorError:
         _cleanup_temp_file(temp_path)
         raise
@@ -206,17 +217,16 @@ def is_binary_file(path: Path) -> bool | None:
     try:
         with path.open("rb") as file:
             chunk = file.read(BINARY_CHECK_BYTES)
-    except OSError as exc:
-        logger.warning("Could not read file for binary check: %s (%s)", path, exc)
+    except OSError:
         return None
 
     return b"\x00" in chunk
 
 
 def format_section(relative_path: str, content: str, separator: str) -> str:
-    """Format one collected file section."""
-    normalized_content = content.rstrip("\n")
-    return f"{separator}\nFILE: {relative_path}\n{separator}\n\n{normalized_content}\n"
+    """Format one collected file section without modifying file content."""
+    content_ending = "" if content.endswith("\n") else "\n"
+    return f"{separator}\nFILE: {relative_path}\n{separator}\n\n{content}{content_ending}"
 
 
 def _same_path(left: Path, right: Path) -> bool:
@@ -233,3 +243,7 @@ def _cleanup_temp_file(temp_path: Path | None) -> None:
         temp_path.unlink(missing_ok=True)
     except OSError:
         logger.warning("Failed to remove temporary output file: %s", temp_path)
+
+
+def _replace_file(source: Path, target: Path) -> None:
+    source.replace(target)

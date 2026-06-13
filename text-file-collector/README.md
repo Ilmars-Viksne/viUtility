@@ -2,7 +2,7 @@
 
 A small Python CLI utility that recursively scans a directory and writes readable text files into one combined output file.
 
-Binary files are skipped. Files that cannot be decoded with the selected encoding are skipped with warnings. Common project directories such as `.git`, `.venv`, `__pycache__`, `node_modules`, `dist`, and `build` are excluded by default. If the output file is inside the input directory, it is skipped during collection.
+Binary files are skipped. Files that cannot be decoded with the selected encoding are skipped with warnings. Unreadable files are skipped with warnings. If the output file is inside the input directory, it is skipped during collection.
 
 ## Installation
 
@@ -40,6 +40,10 @@ text-file-collector run \
   --output-file combined_files.txt \
   --no-default-excludes
 ```
+
+By default, the collector skips common project-noise directories and files such as `.git`, `.venv`, `__pycache__`, `node_modules`, `dist`, and `build`.
+
+Use `--no-default-excludes` to disable this behavior.
 
 With an explicit encoding:
 

@@ -47,6 +47,50 @@ def test_output_format_matches_expected(tmp_path) -> None:
     )
 
 
+def test_preserves_multiple_trailing_newlines(tmp_path) -> None:
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    (input_dir / "a.txt").write_text("hello\n\n", encoding="utf-8")
+
+    result = collect_text_files(CollectionOptions(input_dir, tmp_path / "combined.txt"))
+
+    assert result.output_file.read_text(encoding="utf-8") == (
+        "================================================================================\n"
+        "FILE: a.txt\n"
+        "================================================================================\n"
+        "\n"
+        "hello\n\n"
+    )
+
+
+def test_adds_newline_for_file_without_final_newline(tmp_path) -> None:
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    (input_dir / "a.txt").write_text("hello", encoding="utf-8")
+
+    result = collect_text_files(CollectionOptions(input_dir, tmp_path / "combined.txt"))
+
+    assert result.output_file.read_text(encoding="utf-8").endswith("hello\n")
+    assert not result.output_file.read_text(encoding="utf-8").endswith("hello\n\n")
+
+
+def test_deterministic_output_order(tmp_path) -> None:
+    input_dir = tmp_path / "input"
+    nested = input_dir / "nested"
+    nested.mkdir(parents=True)
+    (input_dir / "b.txt").write_text("b", encoding="utf-8")
+    (input_dir / "a.txt").write_text("a", encoding="utf-8")
+    (nested / "d.txt").write_text("d", encoding="utf-8")
+    (nested / "c.txt").write_text("c", encoding="utf-8")
+
+    result = collect_text_files(CollectionOptions(input_dir, tmp_path / "combined.txt"))
+    output = result.output_file.read_text(encoding="utf-8")
+
+    assert output.index("FILE: a.txt") < output.index("FILE: b.txt")
+    assert output.index("FILE: b.txt") < output.index("FILE: nested/c.txt")
+    assert output.index("FILE: nested/c.txt") < output.index("FILE: nested/d.txt")
+
+
 def test_skips_binary_file_with_null_byte(tmp_path) -> None:
     input_dir = tmp_path / "input"
     input_dir.mkdir()
@@ -157,6 +201,28 @@ def test_user_excludes_skip_matching_files(tmp_path) -> None:
     assert "debug.log" not in output
 
 
+def test_relative_path_exclude_pattern_skips_matching_files(tmp_path) -> None:
+    input_dir = tmp_path / "input"
+    generated = input_dir / "src" / "generated"
+    manual = input_dir / "src" / "manual"
+    generated.mkdir(parents=True)
+    manual.mkdir(parents=True)
+    (generated / "a.txt").write_text("generated", encoding="utf-8")
+    (manual / "b.txt").write_text("manual", encoding="utf-8")
+
+    result = collect_text_files(
+        CollectionOptions(
+            input_dir,
+            tmp_path / "combined.txt",
+            excludes=DEFAULT_EXCLUDES + ("src/generated/*",),
+        ),
+    )
+    output = result.output_file.read_text(encoding="utf-8")
+
+    assert "FILE: src/generated/a.txt" not in output
+    assert "FILE: src/manual/b.txt" in output
+
+
 def test_no_default_excludes_disables_default_excludes(tmp_path) -> None:
     input_dir = tmp_path / "input"
     git_dir = input_dir / ".git"
@@ -204,15 +270,35 @@ def test_atomic_write_does_not_replace_existing_file_on_failure(tmp_path, monkey
     output_file = tmp_path / "combined.txt"
     output_file.write_text("old", encoding="utf-8")
 
-    def fail_replace(self, target):
+    def fail_replace(source, target):
         raise OSError("replace failed")
 
-    monkeypatch.setattr(type(output_file), "replace", fail_replace)
+    monkeypatch.setattr(collector, "_replace_file", fail_replace)
 
     with pytest.raises(TextFileCollectorError):
         collect_text_files(CollectionOptions(input_dir, output_file))
 
     assert output_file.read_text(encoding="utf-8") == "old"
+    assert list(tmp_path.glob(".text-file-collector-*.tmp")) == []
+
+
+def test_output_directory_creation_failure_is_wrapped(tmp_path, monkeypatch) -> None:
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    (input_dir / "a.txt").write_text("a", encoding="utf-8")
+    output_file = tmp_path / "missing" / "combined.txt"
+
+    original_mkdir = collector.Path.mkdir
+
+    def fail_mkdir(self, parents=False, exist_ok=False):
+        if self == output_file.parent:
+            raise OSError("mkdir failed")
+        return original_mkdir(self, parents=parents, exist_ok=exist_ok)
+
+    monkeypatch.setattr(collector.Path, "mkdir", fail_mkdir)
+
+    with pytest.raises(TextFileCollectorError, match="Could not create output directory"):
+        collect_text_files(CollectionOptions(input_dir, output_file))
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="chmod unreadable behavior differs on Windows")

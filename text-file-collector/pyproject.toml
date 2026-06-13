@@ -41,3 +41,9 @@ packages = ["src/text_file_collector"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.coverage.run]
+source = ["src/text_file_collector"]
+
+[tool.coverage.report]
+show_missing = true
