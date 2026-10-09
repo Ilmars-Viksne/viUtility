@@ -6,8 +6,7 @@ import os
 import sys
 
 import pytest
-
-import text_file_collector.collector as collector
+from text_file_collector import collector
 from text_file_collector.collector import (
     DEFAULT_EXCLUDES,
     CollectionOptions,
@@ -221,7 +220,9 @@ def test_user_excludes_skip_matching_files(tmp_path) -> None:
     (input_dir / "debug.log").write_text("debug", encoding="utf-8")
 
     result = collect_text_files(
-        CollectionOptions(input_dir, tmp_path / "combined.txt", excludes=DEFAULT_EXCLUDES + ("*.log",)),
+        CollectionOptions(
+            input_dir, tmp_path / "combined.txt", excludes=DEFAULT_EXCLUDES + ("*.log",)
+        ),
     )
     output = result.output_file.read_text(encoding="utf-8")
 
@@ -258,7 +259,9 @@ def test_no_default_excludes_disables_default_excludes(tmp_path) -> None:
     git_dir.mkdir(parents=True)
     (git_dir / "config").write_text("config", encoding="utf-8")
 
-    result = collect_text_files(CollectionOptions(input_dir, tmp_path / "combined.txt", excludes=()))
+    result = collect_text_files(
+        CollectionOptions(input_dir, tmp_path / "combined.txt", excludes=())
+    )
     output = result.output_file.read_text(encoding="utf-8")
 
     assert result.files_written == 1
@@ -292,7 +295,9 @@ def test_result_counts_are_correct(tmp_path) -> None:
     assert result.read_errors_skipped == 0
 
 
-def test_atomic_write_does_not_replace_existing_file_on_failure(tmp_path, monkeypatch) -> None:
+def test_atomic_write_does_not_replace_existing_file_on_failure(
+    tmp_path, monkeypatch
+) -> None:
     input_dir = tmp_path / "input"
     input_dir.mkdir()
     (input_dir / "a.txt").write_text("a", encoding="utf-8")
@@ -326,11 +331,15 @@ def test_output_directory_creation_failure_is_wrapped(tmp_path, monkeypatch) -> 
 
     monkeypatch.setattr(collector.Path, "mkdir", fail_mkdir)
 
-    with pytest.raises(TextFileCollectorError, match="Could not create output directory"):
+    with pytest.raises(
+        TextFileCollectorError, match="Could not create output directory"
+    ):
         collect_text_files(CollectionOptions(input_dir, output_file))
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="chmod unreadable behavior differs on Windows")
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="chmod unreadable behavior differs on Windows"
+)
 def test_skips_unreadable_file_with_permissions_when_supported(tmp_path) -> None:
     input_dir = tmp_path / "input"
     input_dir.mkdir()
@@ -339,9 +348,13 @@ def test_skips_unreadable_file_with_permissions_when_supported(tmp_path) -> None
     unreadable.chmod(0)
 
     try:
-        result = collect_text_files(CollectionOptions(input_dir, tmp_path / "combined.txt"))
+        result = collect_text_files(
+            CollectionOptions(input_dir, tmp_path / "combined.txt")
+        )
     finally:
         unreadable.chmod(0o600)
 
-    if os.geteuid() != 0:
+    # On Unix, root (UID 0) can read files even without permissions
+    # On Windows, os.geteuid() doesn't exist, so we check if the attribute exists
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
         assert result.read_errors_skipped == 1

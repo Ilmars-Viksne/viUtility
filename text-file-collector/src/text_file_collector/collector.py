@@ -7,9 +7,9 @@ import fnmatch
 import logging
 import os
 import tempfile
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 from text_file_collector.exceptions import TextFileCollectorError
 
@@ -75,17 +75,25 @@ def collect_text_files(options: CollectionOptions) -> CollectionResult:
     try:
         codecs.lookup(options.encoding)
     except LookupError as exc:
-        raise TextFileCollectorError(f"Unsupported encoding: {options.encoding}") from exc
+        raise TextFileCollectorError(
+            f"Unsupported encoding: {options.encoding}"
+        ) from exc
 
     if options.separator_length < 1:
         raise TextFileCollectorError("Separator length must be greater than zero.")
 
     if not input_dir.exists():
-        raise TextFileCollectorError(f"Input directory does not exist: {options.input_dir}")
+        raise TextFileCollectorError(
+            f"Input directory does not exist: {options.input_dir}"
+        )
     if not input_dir.is_dir():
-        raise TextFileCollectorError(f"Input path is not a directory: {options.input_dir}")
+        raise TextFileCollectorError(
+            f"Input path is not a directory: {options.input_dir}"
+        )
     if output_file.exists() and output_file.is_dir():
-        raise TextFileCollectorError(f"Output file is an existing directory: {options.output_file}")
+        raise TextFileCollectorError(
+            f"Output file is an existing directory: {options.output_file}"
+        )
 
     try:
         output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -131,7 +139,10 @@ def collect_text_files(options: CollectionOptions) -> CollectionResult:
                     continue
                 if binary_result is None:
                     counts["read_errors_skipped"] += 1
-                    logger.warning("Skipping unreadable file during binary check: %s", relative_path)
+                    logger.warning(
+                        "Skipping unreadable file during binary check: %s",
+                        relative_path,
+                    )
                     continue
 
                 try:
@@ -142,7 +153,9 @@ def collect_text_files(options: CollectionOptions) -> CollectionResult:
                     continue
                 except OSError as exc:
                     counts["read_errors_skipped"] += 1
-                    logger.warning("Skipping unreadable file: %s (%s)", relative_path, exc)
+                    logger.warning(
+                        "Skipping unreadable file: %s (%s)", relative_path, exc
+                    )
                     continue
 
                 temp_file.write(format_section(relative_path, content, separator))
@@ -154,7 +167,9 @@ def collect_text_files(options: CollectionOptions) -> CollectionResult:
         raise
     except OSError as exc:
         _cleanup_temp_file(temp_path)
-        raise TextFileCollectorError(f"Failed to write output file: {output_file}") from exc
+        raise TextFileCollectorError(
+            f"Failed to write output file: {output_file}"
+        ) from exc
     except Exception:
         _cleanup_temp_file(temp_path)
         raise
@@ -235,7 +250,9 @@ def is_binary_file(path: Path) -> bool | None:
 def format_section(relative_path: str, content: str, separator: str) -> str:
     """Format one collected file section without modifying file content."""
     content_ending = "" if content.endswith("\n") else "\n"
-    return f"{separator}\nFILE: {relative_path}\n{separator}\n\n{content}{content_ending}"
+    return (
+        f"{separator}\nFILE: {relative_path}\n{separator}\n\n{content}{content_ending}"
+    )
 
 
 def _same_path(left: Path, right: Path) -> bool:

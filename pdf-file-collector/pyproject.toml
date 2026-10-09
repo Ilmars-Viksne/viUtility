@@ -49,7 +49,7 @@ packages = ["src/pdf_file_collector"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-v"
+addopts = "-v --basetemp=.tmp_pytest"
 
 [tool.coverage.run]
 source = ["src/pdf_file_collector"]

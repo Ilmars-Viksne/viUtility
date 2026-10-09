@@ -6,8 +6,8 @@ import argparse
 import codecs
 import logging
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 from text_file_collector import __version__
 from text_file_collector.collector import (
@@ -36,10 +36,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
-    run_parser = subparsers.add_parser("run", help="Collect text files from a directory.")
-    run_parser.add_argument("--input-dir", required=True, type=Path, help="Directory to scan recursively.")
-    run_parser.add_argument("--output-file", required=True, type=Path, help="Output text file.")
-    run_parser.add_argument("--encoding", default="utf-8", help="Text encoding to read and write.")
+    run_parser = subparsers.add_parser(
+        "run", help="Collect text files from a directory."
+    )
+    run_parser.add_argument(
+        "--input-dir", required=True, type=Path, help="Directory to scan recursively."
+    )
+    run_parser.add_argument(
+        "--output-file", required=True, type=Path, help="Output text file."
+    )
+    run_parser.add_argument(
+        "--encoding", default="utf-8", help="Text encoding to read and write."
+    )
     run_parser.add_argument(
         "--log-level",
         default="INFO",
@@ -89,7 +97,9 @@ def run_command(args: argparse.Namespace) -> int:
         return 1
     except Exception:
         logger.exception("Unexpected failure.")
-        print("Unexpected error. Run with --log-level DEBUG for details.", file=sys.stderr)
+        print(
+            "Unexpected error. Run with --log-level DEBUG for details.", file=sys.stderr
+        )
         return 99
 
     print(
@@ -128,7 +138,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
-        return int(exc.code)
+        # SystemExit.code can be int, str, or None
+        code = exc.code
+        if code is None:
+            return 0
+        return int(code)
 
     if args.command == "run":
         return run_command(args)

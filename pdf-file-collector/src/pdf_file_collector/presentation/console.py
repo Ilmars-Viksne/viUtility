@@ -7,11 +7,11 @@ from rich.console import Console
 
 
 def _get_stdout_console() -> Console:
-    return Console(file=sys.stdout, highlight=False)
+    return Console(file=sys.stdout, highlight=False, soft_wrap=True, width=400)
 
 
 def _get_stderr_console() -> Console:
-    return Console(file=sys.stderr, highlight=False)
+    return Console(file=sys.stderr, highlight=False, soft_wrap=True, width=400)
 
 
 def print_message(message: str, quiet: bool = False, err: bool = False) -> None:
