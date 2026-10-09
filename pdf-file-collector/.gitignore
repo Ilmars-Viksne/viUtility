@@ -1,0 +1,43 @@
+# Python / Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Build and Distribution
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Testing and Type Checking
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Temporary staged files and password files
+*.tmp
+*.staged
+*.pass
+*.password
+
+# Local test outputs
+test_output/
+output_chunks/
+split_pages/
+sections/
